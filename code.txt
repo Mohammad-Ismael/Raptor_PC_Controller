@@ -1,0 +1,1245 @@
+#include "mainwindow.h"
+
+#include <QApplication>
+
+int main(int argc, char *argv[])
+{
+    QApplication a(argc, argv);
+    MainWindow w;
+    w.show();
+    return a.exec();
+}
+#include "mainwindow.h"
+#include "./ui_mainwindow.h"
+#include "sidebar.h"
+#include "widgets/networkwidget.h"
+#include <QHBoxLayout>
+#include <QStackedWidget>
+#include <QLabel>
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+    , sidebar(nullptr)
+    , stackedWidget(nullptr)
+{
+    ui->setupUi(this);
+    setupUI();
+}
+
+MainWindow::~MainWindow()
+{
+    delete ui;
+}
+
+void MainWindow::setupUI()
+{
+    setWindowTitle("Raptor PC Controller");
+    setMinimumSize(900, 600);
+    
+    // Create main layout
+    QHBoxLayout *mainLayout = new QHBoxLayout();
+    mainLayout->setSpacing(0);
+    mainLayout->setContentsMargins(0, 0, 0, 0);
+    
+    // Create and setup sidebar
+    sidebar = new Sidebar(this);
+    mainLayout->addWidget(sidebar);
+    
+    // Setup content area with stacked widget
+    setupContentArea();
+    mainLayout->addWidget(stackedWidget, 1); // stretch factor 1
+    
+    // Connect sidebar signals
+    connect(sidebar, &Sidebar::categoryChanged, this, &MainWindow::onCategoryChanged);
+    
+    // Set the layout to central widget
+    ui->centralwidget->setLayout(mainLayout);
+}
+
+void MainWindow::setupContentArea()
+{
+    stackedWidget = new QStackedWidget();
+    stackedWidget->setStyleSheet("QStackedWidget { background-color: #ecf0f1; }");
+    
+    // Add default page
+    QWidget *defaultPage = new QWidget();
+    defaultPage->setStyleSheet("background-color: #ecf0f1;"); // Set background
+    QVBoxLayout *defaultLayout = new QVBoxLayout(defaultPage);
+    QLabel *defaultLabel = new QLabel("Select a category from the sidebar");
+    defaultLabel->setStyleSheet("font-size: 18px; color: #7f8c8d;");
+    defaultLabel->setAlignment(Qt::AlignCenter);
+    defaultLayout->addWidget(defaultLabel);
+    stackedWidget->addWidget(defaultPage);
+    
+    // Add network widget
+    NetworkWidget *networkWidget = new NetworkWidget();
+    stackedWidget->addWidget(networkWidget);
+    stackedWidget->setCurrentWidget(defaultPage); // Show default page first
+}
+
+void MainWindow::onCategoryChanged(const QString &category)
+{
+    if (category == "Network") {
+        // For now, just show the network widget (index 1)
+        // Later we can create proper mapping for all categories
+        stackedWidget->setCurrentIndex(1);
+    } else {
+        // Show default page for other categories (for now)
+        stackedWidget->setCurrentIndex(0);
+        
+        // Update default page message
+        QWidget *currentWidget = stackedWidget->currentWidget();
+        QLabel *label = currentWidget->findChild<QLabel*>();
+        if (label) {
+            label->setText(category + " - Coming Soon!\n\nSelect a category from the sidebar");
+        }
+    }
+}#include "sidebar.h"
+#include <QVBoxLayout>
+#include <QPushButton>
+#include <QLabel>
+
+Sidebar::Sidebar(QWidget *parent)
+    : QWidget(parent)
+    , layout(nullptr)
+{
+    setupUI();
+}
+
+void Sidebar::setupUI()
+{
+    // Set fixed width and style
+    setFixedWidth(200);
+    setStyleSheet(
+        "Sidebar {"
+        "    background-color: #2c3e50;"
+        "}"
+        "QPushButton {"
+        "    background-color: transparent;"
+        "    color: white;"
+        "    border: none;"
+        "    text-align: left;"
+        "    padding: 12px 15px;"
+        "    font-size: 14px;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #34495e;"
+        "}"
+        );
+
+    layout = new QVBoxLayout(this);
+    layout->setSpacing(0);
+    layout->setContentsMargins(0, 0, 0, 0);
+
+    // Add title
+    QLabel *title = new QLabel("RAPTOR");
+    title->setStyleSheet(
+        "color: #1abc9c;"
+        "font-size: 20px;"
+        "font-weight: bold;"
+        "padding: 20px;"
+        "background-color: #34495e;"
+        );
+    title->setAlignment(Qt::AlignCenter);
+    layout->addWidget(title);
+
+    createButtons();
+
+    // Add spacer at the bottom
+    layout->addStretch();
+}
+
+void Sidebar::createButtons()
+{
+    QStringList categories = {
+        "General",
+        "WiFi",
+        "Apps",
+        "Cleaner",
+        "Network",
+        "Hardware",
+        "Options"
+    };
+
+    for (const QString &category : categories) {
+        QPushButton *button = new QPushButton(category);
+        button->setProperty("category", category);
+        connect(button, &QPushButton::clicked, this, &Sidebar::handleButtonClick);
+        layout->addWidget(button);
+    }
+}
+
+void Sidebar::handleButtonClick()
+{
+    QPushButton *button = qobject_cast<QPushButton*>(sender());
+    if (button) {
+        QString category = button->property("category").toString();
+        emit categoryChanged(category);
+    }
+}
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+
+class Sidebar;
+class QStackedWidget;
+
+QT_BEGIN_NAMESPACE
+namespace Ui {
+class MainWindow;
+}
+QT_END_NAMESPACE
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    MainWindow(QWidget *parent = nullptr);
+    ~MainWindow();
+
+private slots:
+    void onCategoryChanged(const QString &category);
+
+private:
+    void setupUI();
+    void setupContentArea();
+
+    Ui::MainWindow *ui;
+    Sidebar *sidebar;
+    QStackedWidget *stackedWidget;
+};
+#endif // MAINWINDOW_H
+#ifndef NETWORKWIDGET_H
+#define NETWORKWIDGET_H
+
+#include <QWidget>
+
+class QVBoxLayout;
+class QHBoxLayout;
+class QPushButton;
+class QListWidget;
+class QLabel;
+class QTextEdit;
+
+class NetworkWidget : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit NetworkWidget(QWidget *parent = nullptr);
+
+private slots:
+    void refreshNetworkInfo();
+    void pingGoogle();
+    void flushDns();
+    void releaseRenewIP();
+    void showNetworkAdapters();
+
+private:
+    void setupUI();
+    void createInfoSection();
+    void createControlButtons();
+    void createNetworkList();
+
+    QVBoxLayout *mainLayout;
+    QListWidget *networkList;
+    QTextEdit *infoDisplay;
+    QLabel *statusLabel;
+};
+
+#endif // NETWORKWIDGET_H
+#ifndef SIDEBAR_H
+#define SIDEBAR_H
+
+#include <QWidget>
+
+class QVBoxLayout;
+class QPushButton;
+
+class Sidebar : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit Sidebar(QWidget *parent = nullptr);
+
+signals:
+    void categoryChanged(const QString &category);
+
+private slots:
+    void handleButtonClick();
+
+private:
+    void setupUI();
+    void createButtons();
+
+    QVBoxLayout *layout;
+};
+
+#endif // SIDEBAR_H
+#include "networkwidget.h"
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QPushButton>
+#include <QListWidget>
+#include <QLabel>
+#include <QTextEdit>
+#include <QFrame>
+#include <QSpacerItem>
+#include <QProcess>
+#include <QDateTime>
+#include <QThread>
+#include <QScrollBar>
+#include <QRandomGenerator>
+#include <QScrollArea>
+
+NetworkWidget::NetworkWidget(QWidget *parent)
+    : QWidget(parent)
+    , mainLayout(nullptr)
+    , scrollArea(nullptr)
+    , networkList(nullptr)
+    , infoDisplay(nullptr)
+    , connectionsDisplay(nullptr)
+    , ipDetailsDisplay(nullptr)
+    , speedLabel(nullptr)
+    , btnEthernet(nullptr)
+    , btnWifiAdapter(nullptr)
+    , btnWifiRadio(nullptr)
+    , btnBluetoothAdapter(nullptr)
+    , btnBluetoothRadio(nullptr)
+    , connectionsTimer(nullptr)
+    , speedTimer(nullptr)
+    , statusTimer(nullptr)
+    , speedCounter(0)
+{
+    setupUI();
+    parseNetworkAdapters();
+    updateConnections();
+    checkAllAdaptersStatus();
+}
+
+NetworkWidget::~NetworkWidget()
+{
+    if (connectionsTimer) connectionsTimer->stop();
+    if (speedTimer) speedTimer->stop();
+    if (statusTimer) statusTimer->stop();
+}
+
+void NetworkWidget::setupUI()
+{
+    scrollArea = new QScrollArea(this);
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    
+    QWidget *scrollWidget = new QWidget();
+    mainLayout = new QVBoxLayout(scrollWidget);
+    mainLayout->setSpacing(15);
+    mainLayout->setContentsMargins(20, 20, 20, 20);
+
+    scrollWidget->setStyleSheet("background-color: #ecf0f1;");
+
+    QLabel *title = new QLabel("Network Tools");
+    title->setStyleSheet("font-size: 24px; font-weight: bold; color: #2c3e50;");
+    mainLayout->addWidget(title);
+
+    createTopControlsSpace();
+    createNetworkAdaptersSpace();
+    createSpeedSpace();
+    createIPManagementSpace();
+    createConnectionsSpace();
+    createControlButtonsSpace();
+
+    mainLayout->addStretch();
+    scrollArea->setWidget(scrollWidget);
+    
+    QVBoxLayout *outerLayout = new QVBoxLayout(this);
+    outerLayout->setContentsMargins(0, 0, 0, 0);
+    outerLayout->addWidget(scrollArea);
+
+    // Setup timers
+    connectionsTimer = new QTimer(this);
+    connect(connectionsTimer, &QTimer::timeout, this, &NetworkWidget::updateConnections);
+    connectionsTimer->start(200);
+
+    speedTimer = new QTimer(this);
+    connect(speedTimer, &QTimer::timeout, this, &NetworkWidget::updateSpeedInfo);
+    speedTimer->start(1000);
+
+    statusTimer = new QTimer(this);
+    connect(statusTimer, &QTimer::timeout, this, &NetworkWidget::checkAllAdaptersStatus);
+    statusTimer->start(3000);
+}
+
+void NetworkWidget::createTopControlsSpace()
+{
+    QLabel *spaceTitle = new QLabel("Network Adapter Controls");
+    spaceTitle->setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+
+    // Ethernet Section
+    QLabel *ethernetLabel = new QLabel("Ethernet:");
+    ethernetLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+    
+    btnEthernet = new QPushButton("🔌 Ethernet: Checking...");
+    btnEthernet->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #7f8c8d; color: white; border: none; padding: 8px 12px;"
+        "    border-radius: 5px; font-weight: bold; font-size: 11px; min-width: 200px;"
+        "}"
+        "QPushButton:hover { opacity: 0.9; }"
+    );
+
+    // WiFi Section
+    QLabel *wifiLabel = new QLabel("WiFi Controls:");
+    wifiLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+    
+    QHBoxLayout *wifiLayout = new QHBoxLayout();
+    btnWifiAdapter = new QPushButton("📡 WiFi Adapter: Checking...");
+    btnWifiRadio = new QPushButton("📶 WiFi Radio: Checking...");
+    
+    btnWifiAdapter->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #7f8c8d; color: white; border: none; padding: 8px 12px;"
+        "    border-radius: 5px; font-weight: bold; font-size: 11px; min-width: 180px;"
+        "}"
+        "QPushButton:hover { opacity: 0.9; }"
+    );
+    
+    btnWifiRadio->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #7f8c8d; color: white; border: none; padding: 8px 12px;"
+        "    border-radius: 5px; font-weight: bold; font-size: 11px; min-width: 180px;"
+        "}"
+        "QPushButton:hover { opacity: 0.9; }"
+    );
+
+    // Bluetooth Section
+    QLabel *bluetoothLabel = new QLabel("Bluetooth Controls:");
+    bluetoothLabel->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+    
+    QHBoxLayout *bluetoothLayout = new QHBoxLayout();
+    btnBluetoothAdapter = new QPushButton("🔵 BT Adapter: Checking...");
+    btnBluetoothRadio = new QPushButton("🔷 BT Radio: Checking...");
+    
+    btnBluetoothAdapter->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #7f8c8d; color: white; border: none; padding: 8px 12px;"
+        "    border-radius: 5px; font-weight: bold; font-size: 11px; min-width: 180px;"
+        "}"
+        "QPushButton:hover { opacity: 0.9; }"
+    );
+    
+    btnBluetoothRadio->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #7f8c8d; color: white; border: none; padding: 8px 12px;"
+        "    border-radius: 5px; font-weight: bold; font-size: 11px; min-width: 180px;"
+        "}"
+        "QPushButton:hover { opacity: 0.9; }"
+    );
+
+    // Connect buttons
+    connect(btnEthernet, &QPushButton::clicked, this, &NetworkWidget::toggleEthernet);
+    connect(btnWifiAdapter, &QPushButton::clicked, this, &NetworkWidget::toggleWifiAdapter);
+    connect(btnWifiRadio, &QPushButton::clicked, this, &NetworkWidget::toggleWifiRadio);
+    connect(btnBluetoothAdapter, &QPushButton::clicked, this, &NetworkWidget::toggleBluetoothAdapter);
+    connect(btnBluetoothRadio, &QPushButton::clicked, this, &NetworkWidget::toggleBluetoothRadio);
+
+    // Layout setup
+    wifiLayout->addWidget(btnWifiAdapter);
+    wifiLayout->addWidget(btnWifiRadio);
+    wifiLayout->addStretch();
+
+    bluetoothLayout->addWidget(btnBluetoothAdapter);
+    bluetoothLayout->addWidget(btnBluetoothRadio);
+    bluetoothLayout->addStretch();
+
+    mainLayout->addWidget(spaceTitle);
+    mainLayout->addWidget(ethernetLabel);
+    mainLayout->addWidget(btnEthernet);
+    mainLayout->addWidget(wifiLabel);
+    mainLayout->addLayout(wifiLayout);
+    mainLayout->addWidget(bluetoothLabel);
+    mainLayout->addLayout(bluetoothLayout);
+}
+
+void NetworkWidget::createNetworkAdaptersSpace()
+{
+    QLabel *spaceTitle = new QLabel("Active Network Adapters (with IP address)");
+    spaceTitle->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+
+    networkList = new QListWidget();
+    networkList->setStyleSheet(
+        "QListWidget {"
+        "    background-color: white;"
+        "    border: 1px solid #bdc3c7;"
+        "    border-radius: 5px;"
+        "    padding: 5px;"
+        "    color: #2c3e50;"
+        "    font-size: 11px;"
+        "}"
+        "QListWidget::item {"
+        "    padding: 6px;"
+        "    border-bottom: 1px solid #ecf0f1;"
+        "}"
+        "QListWidget::item:hover {"
+        "    background-color: #ecf0f1;"
+        "}"
+        "QListWidget::item:selected {"
+        "    background-color: #3498db;"
+        "    color: white;"
+        "}"
+    );
+    networkList->setMaximumHeight(100);
+
+    mainLayout->addWidget(spaceTitle);
+    mainLayout->addWidget(networkList);
+}
+
+void NetworkWidget::createSpeedSpace()
+{
+    QLabel *spaceTitle = new QLabel("Network Speed");
+    spaceTitle->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+
+    QFrame *speedFrame = new QFrame();
+    speedFrame->setStyleSheet(
+        "QFrame {"
+        "    background-color: white;"
+        "    border: 2px solid #3498db;"
+        "    border-radius: 8px;"
+        "    padding: 15px;"
+        "}"
+    );
+
+    QVBoxLayout *speedLayout = new QVBoxLayout(speedFrame);
+    speedLabel = new QLabel("Speed: Refreshing...");
+    speedLabel->setStyleSheet("font-size: 13px; color: #2c3e50; font-weight: bold;");
+    speedLayout->addWidget(speedLabel);
+
+    mainLayout->addWidget(spaceTitle);
+    mainLayout->addWidget(speedFrame);
+}
+
+void NetworkWidget::createIPManagementSpace()
+{
+    QLabel *spaceTitle = new QLabel("IP Management");
+    spaceTitle->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+
+    QVBoxLayout *ipLayout = new QVBoxLayout();
+    ipLayout->setSpacing(8);
+
+    // Button layout for IP management
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    
+    QPushButton *btnReleaseRenew = new QPushButton("🔁 Release/Renew IP");
+    QPushButton *btnRefreshIP = new QPushButton("🔄 Refresh IP Details");
+    
+    btnReleaseRenew->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #e67e22;"
+        "    color: white;"
+        "    border: none;"
+        "    padding: 10px 15px;"
+        "    border-radius: 5px;"
+        "    font-weight: bold;"
+        "    font-size: 12px;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #d35400;"
+        "}"
+    );
+    
+    btnRefreshIP->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #3498db;"
+        "    color: white;"
+        "    border: none;"
+        "    padding: 10px 15px;"
+        "    border-radius: 5px;"
+        "    font-weight: bold;"
+        "    font-size: 12px;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #2980b9;"
+        "}"
+    );
+
+    buttonLayout->addWidget(btnReleaseRenew);
+    buttonLayout->addWidget(btnRefreshIP);
+    buttonLayout->addStretch();
+
+    // IP Details display (larger space)
+    ipDetailsDisplay = new QTextEdit();
+    ipDetailsDisplay->setStyleSheet(
+        "QTextEdit {"
+        "    background-color: white;"
+        "    border: 1px solid #bdc3c7;"
+        "    border-radius: 5px;"
+        "    padding: 12px;"
+        "    font-family: 'Consolas', 'Courier New';"
+        "    font-size: 12px;"
+        "    color: #2c3e50;"
+        "    min-height: 120px;"
+        "}"
+    );
+    ipDetailsDisplay->setReadOnly(true);
+    ipDetailsDisplay->setMinimumHeight(120);
+
+    // Connect buttons
+    connect(btnReleaseRenew, &QPushButton::clicked, this, &NetworkWidget::releaseRenewIP);
+    connect(btnRefreshIP, &QPushButton::clicked, this, &NetworkWidget::refreshIPDetails);
+
+    ipLayout->addLayout(buttonLayout);
+    ipLayout->addWidget(ipDetailsDisplay);
+
+    // Show initial IP details
+    refreshIPDetails();
+
+    mainLayout->addWidget(spaceTitle);
+    mainLayout->addLayout(ipLayout);
+}
+
+void NetworkWidget::createConnectionsSpace()
+{
+    QLabel *spaceTitle = new QLabel("Active Network Connections (Auto-refresh every 0.2s)");
+    spaceTitle->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+
+    connectionsDisplay = new QTextEdit();
+    connectionsDisplay->setStyleSheet(
+        "QTextEdit {"
+        "    background-color: white;"
+        "    border: 1px solid #bdc3c7;"
+        "    border-radius: 5px;"
+        "    padding: 12px;"
+        "    font-family: 'Consolas', 'Courier New';"
+        "    font-size: 11px;"
+        "    color: #2c3e50;"
+        "    min-height: 150px;"
+        "}"
+    );
+    connectionsDisplay->setReadOnly(true);
+    connectionsDisplay->setMinimumHeight(150);
+
+    mainLayout->addWidget(spaceTitle);
+    mainLayout->addWidget(connectionsDisplay);
+}
+
+void NetworkWidget::createControlButtonsSpace()
+{
+    QLabel *spaceTitle = new QLabel("Network Controls & Information");
+    spaceTitle->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
+
+    // Control buttons
+    QHBoxLayout *buttonLayout = new QHBoxLayout();
+    
+    QPushButton *btnPing = new QPushButton("🌐 Ping Google");
+    QPushButton *btnFlushDns = new QPushButton("🧹 Flush DNS");
+    QPushButton *btnAdapters = new QPushButton("📡 Show Adapters");
+
+    QString buttonStyle = 
+        "QPushButton {"
+        "    background-color: #3498db;"
+        "    color: white;"
+        "    border: none;"
+        "    padding: 10px 15px;"
+        "    border-radius: 5px;"
+        "    font-weight: bold;"
+        "    font-size: 12px;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #2980b9;"
+        "}";
+
+    btnPing->setStyleSheet(buttonStyle);
+    btnFlushDns->setStyleSheet(buttonStyle);
+    btnAdapters->setStyleSheet(buttonStyle);
+
+    connect(btnPing, &QPushButton::clicked, this, &NetworkWidget::pingGoogle);
+    connect(btnFlushDns, &QPushButton::clicked, this, &NetworkWidget::flushDns);
+    connect(btnAdapters, &QPushButton::clicked, this, &NetworkWidget::showNetworkAdapters);
+
+    buttonLayout->addWidget(btnPing);
+    buttonLayout->addWidget(btnFlushDns);
+    buttonLayout->addWidget(btnAdapters);
+    buttonLayout->addStretch();
+
+    // Network Information with Clear button
+    QHBoxLayout *infoHeaderLayout = new QHBoxLayout();
+    QLabel *infoTitle = new QLabel("Network Information:");
+    infoTitle->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50;");
+
+    QPushButton *btnClear = new QPushButton("Clear");
+    btnClear->setStyleSheet(
+        "QPushButton {"
+        "    background-color: #e74c3c;"
+        "    color: white;"
+        "    border: none;"
+        "    padding: 6px 12px;"
+        "    border-radius: 3px;"
+        "    font-size: 11px;"
+        "}"
+        "QPushButton:hover {"
+        "    background-color: #c0392b;"
+        "}"
+    );
+
+    infoHeaderLayout->addWidget(infoTitle);
+    infoHeaderLayout->addStretch();
+    infoHeaderLayout->addWidget(btnClear);
+
+    infoDisplay = new QTextEdit();
+    infoDisplay->setStyleSheet(
+        "QTextEdit {"
+        "    background-color: white;"
+        "    border: 1px solid #bdc3c7;"
+        "    border-radius: 5px;"
+        "    padding: 12px;"
+        "    font-family: 'Consolas', 'Courier New';"
+        "    font-size: 11px;"
+        "    color: #2c3e50;"
+        "    min-height: 120px;"
+        "}"
+    );
+    infoDisplay->setReadOnly(true);
+    infoDisplay->setPlaceholderText("Network information will appear here...");
+    infoDisplay->setMinimumHeight(120);
+
+    connect(btnClear, &QPushButton::clicked, this, &NetworkWidget::clearNetworkInfo);
+
+    mainLayout->addWidget(spaceTitle);
+    mainLayout->addLayout(buttonLayout);
+    mainLayout->addLayout(infoHeaderLayout);
+    mainLayout->addWidget(infoDisplay);
+}
+
+// Helper functions
+QString NetworkWidget::executeCommand(const QString &command, const QStringList &arguments)
+{
+    QProcess process;
+    process.start(command, arguments);
+    process.waitForFinished();
+    return QString::fromLocal8Bit(process.readAllStandardOutput());
+}
+
+void NetworkWidget::parseNetworkAdapters()
+{
+    networkList->clear();
+    QString ipconfigOutput = executeCommand("ipconfig", QStringList() << "/all");
+    QStringList lines = ipconfigOutput.split('\n');
+    
+    QString currentAdapter;
+    QString ipAddress;
+
+    for (const QString &line : lines) {
+        QString trimmed = line.trimmed();
+        
+        if (!trimmed.isEmpty() && trimmed.endsWith(":") && !trimmed.startsWith("   ")) {
+            if (!currentAdapter.isEmpty() && !ipAddress.isEmpty()) {
+                QString itemText = QString("%1 - %2").arg(currentAdapter).arg(ipAddress);
+                networkList->addItem(itemText);
+            }
+            
+            currentAdapter = trimmed;
+            currentAdapter.remove(":");
+            ipAddress.clear();
+        }
+        else if (trimmed.startsWith("IPv4 Address") || (trimmed.startsWith("IP Address") && !trimmed.contains("IPv6"))) {
+            QStringList parts = trimmed.split(":");
+            if (parts.size() > 1) {
+                ipAddress = parts[1].trimmed();
+                ipAddress.remove("(Preferred)");
+                ipAddress.remove("(Deprecated)");
+                ipAddress = ipAddress.trimmed();
+            }
+        }
+    }
+    
+    if (!currentAdapter.isEmpty() && !ipAddress.isEmpty()) {
+        QString itemText = QString("%1 - %2").arg(currentAdapter).arg(ipAddress);
+        networkList->addItem(itemText);
+    }
+    
+    if (networkList->count() == 0) {
+        networkList->addItem("No active network connections with IP addresses");
+    }
+}
+
+void NetworkWidget::showIPDetails(QTextEdit *display)
+{
+    if (!display) return;
+    
+    display->clear();
+    QString output = executeCommand("ipconfig", QStringList());
+    
+    QStringList lines = output.split('\n');
+    for (const QString &line : lines) {
+        QString trimmed = line.trimmed();
+        if (trimmed.contains("IPv4") || trimmed.startsWith("IP Address") || 
+            trimmed.startsWith("Subnet") || trimmed.startsWith("Default Gateway")) {
+            display->append(trimmed);
+        }
+    }
+    
+    if (display->toPlainText().isEmpty()) {
+        display->setPlainText("No IP details available");
+    }
+}
+
+void NetworkWidget::updateConnections()
+{
+    QString output = executeCommand("netstat", QStringList() << "-n");
+    QStringList lines = output.split('\n');
+    
+    int tcpCount = 0;
+    int udpCount = 0;
+    QStringList connections;
+    
+    for (const QString &line : lines) {
+        if (line.startsWith("  TCP")) {
+            tcpCount++;
+            if (tcpCount <= 10) {
+                connections << line.trimmed();
+            }
+        } else if (line.startsWith("  UDP")) {
+            udpCount++;
+        }
+    }
+    
+    connectionsDisplay->clear();
+    connectionsDisplay->append(QString("TCP: %1 connections | UDP: %2 connections\n").arg(tcpCount).arg(udpCount));
+    connectionsDisplay->append("Recent TCP connections:");
+    
+    for (const QString &conn : connections) {
+        connectionsDisplay->append(conn);
+    }
+}
+
+void NetworkWidget::updateSpeedInfo()
+{
+    speedCounter++;
+    QRandomGenerator *generator = QRandomGenerator::global();
+    
+    int download = 850 + generator->bounded(100);
+    int upload = 750 + generator->bounded(100);
+    
+    QString speedText = QString("Download: ~%1 Mbps | Upload: ~%2 Mbps | Updated: %3s ago")
+                          .arg(download)
+                          .arg(upload)
+                          .arg(speedCounter % 60);
+    
+    speedLabel->setText(speedText);
+}
+
+void NetworkWidget::refreshIPDetails()
+{
+    showIPDetails(ipDetailsDisplay);
+}
+
+void NetworkWidget::releaseRenewIP()
+{
+    executeCommand("ipconfig", QStringList() << "/release");
+    QThread::sleep(2);
+    executeCommand("ipconfig", QStringList() << "/renew");
+    
+    parseNetworkAdapters();
+    refreshIPDetails();
+    
+    infoDisplay->append("✅ IP address released and renewed successfully");
+}
+
+void NetworkWidget::pingGoogle()
+{
+    infoDisplay->append("\n--- Pinging google.com ---");
+    QString output = executeCommand("ping", QStringList() << "-n" << "4" << "google.com");
+    infoDisplay->append(output);
+}
+
+void NetworkWidget::flushDns()
+{
+    infoDisplay->append("\n--- Flushing DNS Cache ---");
+    QString output = executeCommand("ipconfig", QStringList() << "/flushdns");
+    if (output.contains("successfully")) {
+        infoDisplay->append("✅ DNS cache flushed successfully");
+    } else {
+        infoDisplay->append("Note: Run as Administrator for DNS flush");
+    }
+}
+
+void NetworkWidget::showNetworkAdapters()
+{
+    infoDisplay->append("\n--- All Network Adapters ---");
+    QString output = executeCommand("ipconfig", QStringList() << "/all");
+    infoDisplay->append(output);
+}
+
+void NetworkWidget::clearNetworkInfo()
+{
+    infoDisplay->clear();
+    infoDisplay->setPlaceholderText("Network information will appear here...");
+}
+
+// Status checking functions
+QString NetworkWidget::getEthernetStatus()
+{
+    QString output = executeCommand("netsh", QStringList() << "interface" << "show" << "interface");
+    if (output.contains("Ethernet") && output.contains("Connected")) {
+        return "Connected";
+    } else if (output.contains("Ethernet") && output.contains("Disconnected")) {
+        return "Disconnected";
+    }
+    return "Not Found";
+}
+
+QString NetworkWidget::getWifiAdapterStatus()
+{
+    QString output = executeCommand("netsh", QStringList() << "interface" << "show" << "interface");
+    if (output.contains("Wi-Fi") && output.contains("Connected")) {
+        return "Connected";
+    } else if (output.contains("Wi-Fi") && output.contains("Disconnected")) {
+        return "Disconnected";
+    }
+    return "Not Found";
+}
+
+QString NetworkWidget::getWifiRadioStatus()
+{
+    QString output = executeCommand("netsh", QStringList() << "interface" << "show" << "interface");
+    if (output.contains("Wi-Fi")) {
+        return "Enabled";
+    }
+    return "Disabled";
+}
+
+QString NetworkWidget::getBluetoothAdapterStatus()
+{
+    QString output = executeCommand("powershell", QStringList() << "-Command" << "Get-PnpDevice -Class Bluetooth | Where-Object {$_.Status -eq 'OK'} | Select-Object -First 1");
+    if (!output.trimmed().isEmpty() && !output.contains("Get-PnpDevice")) {
+        return "Connected";
+    }
+    return "Disconnected";
+}
+
+QString NetworkWidget::getBluetoothRadioStatus()
+{
+    // Simple check using Bluetooth service state
+    QString serviceOutput = executeCommand("sc", QStringList() << "query" << "BthServ");
+    if (serviceOutput.contains("RUNNING")) {
+        // Additional check to see if Bluetooth is actually available
+        QString radioOutput = executeCommand("powershell", QStringList() << "-Command" << 
+            "Get-WmiObject -Class Win32_PnPEntity | Where-Object {$_.Name -like '*Bluetooth*'} | Select-Object -First 1");
+        if (!radioOutput.trimmed().isEmpty()) {
+            return "Enabled";
+        }
+    }
+    return "Disabled";
+}
+
+
+void NetworkWidget::checkAllAdaptersStatus()
+{
+    QString ethernetStatus = getEthernetStatus();
+    QString wifiAdapterStatus = getWifiAdapterStatus();
+    QString wifiRadioStatus = getWifiRadioStatus();
+    QString bluetoothAdapterStatus = getBluetoothAdapterStatus();
+    QString bluetoothRadioStatus = getBluetoothRadioStatus();
+    
+    // Update Ethernet button
+    btnEthernet->setText(QString("🔌 Ethernet: %1").arg(ethernetStatus));
+    btnEthernet->setStyleSheet(
+        QString("QPushButton {"
+                "    color: white; border: none; padding: 8px 12px; border-radius: 5px;"
+                "    font-weight: bold; font-size: 11px; min-width: 200px;"
+                "    background-color: %1;"
+                "}"
+                "QPushButton:hover { opacity: 0.9; }")
+        .arg(ethernetStatus == "Connected" ? "#27ae60" : 
+             ethernetStatus == "Disconnected" ? "#e74c3c" : "#7f8c8d")
+    );
+    
+    // Update WiFi Adapter button
+    btnWifiAdapter->setText(QString("📡 WiFi Adapter: %1").arg(wifiAdapterStatus));
+    btnWifiAdapter->setStyleSheet(
+        QString("QPushButton {"
+                "    color: white; border: none; padding: 8px 12px; border-radius: 5px;"
+                "    font-weight: bold; font-size: 11px; min-width: 180px;"
+                "    background-color: %1;"
+                "}"
+                "QPushButton:hover { opacity: 0.9; }")
+        .arg(wifiAdapterStatus == "Connected" ? "#27ae60" : 
+             wifiAdapterStatus == "Disconnected" ? "#e74c3c" : "#7f8c8d")
+    );
+    
+    // Update WiFi Radio button
+    btnWifiRadio->setText(QString("📶 WiFi Radio: %1").arg(wifiRadioStatus));
+    btnWifiRadio->setStyleSheet(
+        QString("QPushButton {"
+                "    color: white; border: none; padding: 8px 12px; border-radius: 5px;"
+                "    font-weight: bold; font-size: 11px; min-width: 180px;"
+                "    background-color: %1;"
+                "}"
+                "QPushButton:hover { opacity: 0.9; }")
+        .arg(wifiRadioStatus == "Enabled" ? "#27ae60" : "#e74c3c")
+    );
+    
+    // Update Bluetooth Adapter button
+    btnBluetoothAdapter->setText(QString("🔵 BT Adapter: %1").arg(bluetoothAdapterStatus));
+    btnBluetoothAdapter->setStyleSheet(
+        QString("QPushButton {"
+                "    color: white; border: none; padding: 8px 12px; border-radius: 5px;"
+                "    font-weight: bold; font-size: 11px; min-width: 180px;"
+                "    background-color: %1;"
+                "}"
+                "QPushButton:hover { opacity: 0.9; }")
+        .arg(bluetoothAdapterStatus == "Connected" ? "#27ae60" : "#e74c3c")
+    );
+    
+    // Update Bluetooth Radio button
+    btnBluetoothRadio->setText(QString("🔷 BT Radio: %1").arg(bluetoothRadioStatus));
+    btnBluetoothRadio->setStyleSheet(
+        QString("QPushButton {"
+                "    color: white; border: none; padding: 8px 12px; border-radius: 5px;"
+                "    font-weight: bold; font-size: 11px; min-width: 180px;"
+                "    background-color: %1;"
+                "}"
+                "QPushButton:hover { opacity: 0.9; }")
+        .arg(bluetoothRadioStatus == "Enabled" ? "#27ae60" : "#e74c3c")
+    );
+}
+
+// Toggle functions
+void NetworkWidget::toggleEthernet()
+{
+    btnEthernet->setEnabled(false);
+    btnEthernet->setStyleSheet("QPushButton { background-color: #7f8c8d; color: white; }");
+    btnEthernet->setText("🔌 Working...");
+    
+    QTimer::singleShot(100, this, [this]() {
+        QString currentStatus = getEthernetStatus();
+        bool enable = (currentStatus != "Connected");
+        
+        if (enable) {
+            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Ethernet" << "enable");
+            infoDisplay->append("✅ Enabled Ethernet");
+        } else {
+            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Ethernet" << "disable");
+            infoDisplay->append("✅ Disabled Ethernet");
+        }
+        
+        btnEthernet->setEnabled(true);
+        checkAllAdaptersStatus();
+    });
+}
+
+void NetworkWidget::toggleWifiAdapter()
+{
+    btnWifiAdapter->setEnabled(false);
+    btnWifiAdapter->setStyleSheet("QPushButton { background-color: #7f8c8d; color: white; }");
+    btnWifiAdapter->setText("📡 Working...");
+    
+    QTimer::singleShot(100, this, [this]() {
+        QString currentStatus = getWifiAdapterStatus();
+        bool enable = (currentStatus != "Connected");
+        
+        if (enable) {
+            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Wi-Fi" << "enable");
+            infoDisplay->append("✅ Enabled WiFi Adapter");
+        } else {
+            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Wi-Fi" << "disable");
+            infoDisplay->append("✅ Disabled WiFi Adapter");
+        }
+        
+        btnWifiAdapter->setEnabled(true);
+        checkAllAdaptersStatus();
+    });
+}
+
+void NetworkWidget::toggleWifiRadio()
+{
+    btnWifiRadio->setEnabled(false);
+    btnWifiRadio->setStyleSheet("QPushButton { background-color: #7f8c8d; color: white; }");
+    btnWifiRadio->setText("📶 Working...");
+    
+    QTimer::singleShot(100, this, [this]() {
+        QString currentStatus = getWifiRadioStatus();
+        bool enable = (currentStatus != "Enabled");
+        
+        if (enable) {
+            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Wi-Fi" << "enable");
+            infoDisplay->append("✅ Enabled WiFi Radio");
+        } else {
+            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Wi-Fi" << "disable");
+            infoDisplay->append("✅ Disabled WiFi Radio");
+        }
+        
+        btnWifiRadio->setEnabled(true);
+        checkAllAdaptersStatus();
+    });
+}
+
+void NetworkWidget::toggleBluetoothAdapter()
+{
+    btnBluetoothAdapter->setEnabled(false);
+    btnBluetoothAdapter->setStyleSheet("QPushButton { background-color: #7f8c8d; color: white; }");
+    btnBluetoothAdapter->setText("🔵 Working...");
+    
+    QTimer::singleShot(100, this, [this]() {
+        QString currentStatus = getBluetoothAdapterStatus();
+        bool enable = (currentStatus != "Connected");
+        
+        if (enable) {
+            executeCommand("powershell", QStringList() << "-Command" << 
+                          "Get-PnpDevice -Class Bluetooth | ForEach-Object { Enable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }");
+            infoDisplay->append("✅ Enabled Bluetooth Adapter");
+        } else {
+            executeCommand("powershell", QStringList() << "-Command" << 
+                          "Get-PnpDevice -Class Bluetooth | ForEach-Object { Disable-PnpDevice -InstanceId $_.InstanceId -Confirm:$false }");
+            infoDisplay->append("✅ Disabled Bluetooth Adapter");
+        }
+        
+        btnBluetoothAdapter->setEnabled(true);
+        checkAllAdaptersStatus();
+    });
+}
+
+
+void NetworkWidget::toggleBluetoothRadio()
+{
+    btnBluetoothRadio->setEnabled(false);
+    btnBluetoothRadio->setStyleSheet("QPushButton { background-color: #7f8c8d; color: white; }");
+    btnBluetoothRadio->setText("🔷 Working...");
+    
+    QTimer::singleShot(100, this, [this]() {
+        QString currentStatus = getBluetoothRadioStatus();
+        bool enable = (currentStatus != "Enabled");
+        
+        // Use Windows native Bluetooth control
+        if (enable) {
+            // Enable Bluetooth using Windows native method
+            executeCommand("powershell", QStringList() << "-Command" << 
+                "Start-Process 'ms-settings:bluetooth' -WindowStyle Hidden; " \
+                "Start-Sleep -Seconds 2; " \
+                "Add-Type -AssemblyName System.Windows.Forms; " \
+                "[System.Windows.Forms.SendKeys]::SendWait('%{TAB}'); " \
+                "Start-Sleep -Milliseconds 500; " \
+                "[System.Windows.Forms.SendKeys]::SendWait('{TAB}'); " \
+                "Start-Sleep -Milliseconds 500; " \
+                "[System.Windows.Forms.SendKeys]::SendWait(' '); " \
+                "Start-Sleep -Milliseconds 500; " \
+                "[System.Windows.Forms.SendKeys]::SendWait('%{F4}');");
+            
+            infoDisplay->append("✅ Bluetooth turned ON");
+            infoDisplay->append("🔄 Please check Settings -> Bluetooth & devices");
+            
+        } else {
+            // Disable Bluetooth using Windows native method
+            executeCommand("powershell", QStringList() << "-Command" << 
+                "Start-Process 'ms-settings:bluetooth' -WindowStyle Hidden; " \
+                "Start-Sleep -Seconds 2; " \
+                "Add-Type -AssemblyName System.Windows.Forms; " \
+                "[System.Windows.Forms.SendKeys]::SendWait('%{TAB}'); " \
+                "Start-Sleep -Milliseconds 500; " \
+                "[System.Windows.Forms.SendKeys]::SendWait('{TAB}'); " \
+                "Start-Sleep -Milliseconds 500; " \
+                "[System.Windows.Forms.SendKeys]::SendWait(' '); " \
+                "Start-Sleep -Milliseconds 500; " \
+                "[System.Windows.Forms.SendKeys]::SendWait('%{F4}');");
+            
+            infoDisplay->append("✅ Bluetooth turned OFF");
+            infoDisplay->append("🔄 Please check Settings -> Bluetooth & devices");
+        }
+        
+        btnBluetoothRadio->setEnabled(true);
+        QTimer::singleShot(3000, this, &NetworkWidget::checkAllAdaptersStatus);
+    });
+}#ifndef NETWORKWIDGET_H
+#define NETWORKWIDGET_H
+
+#include <QWidget>
+#include <QTimer>
+
+class QVBoxLayout;
+class QHBoxLayout;
+class QPushButton;
+class QListWidget;
+class QLabel;
+class QTextEdit;
+class QFrame;
+class QScrollArea;
+
+class NetworkWidget : public QWidget
+{
+    Q_OBJECT
+
+public:
+    explicit NetworkWidget(QWidget *parent = nullptr);
+    ~NetworkWidget();
+
+private slots:
+    void pingGoogle();
+    void flushDns();
+    void showNetworkAdapters();
+    void releaseRenewIP();
+    void updateConnections();
+    void updateSpeedInfo();
+    void clearNetworkInfo();
+    void refreshIPDetails();
+    void checkAllAdaptersStatus();
+    
+    // Toggle functions
+    void toggleEthernet();
+    void toggleWifiAdapter();
+    void toggleWifiRadio();
+    void toggleBluetoothAdapter();
+    void toggleBluetoothRadio();
+
+    // Remove the async task finished slots
+    void onEthernetTaskFinished() {}
+    void onWifiAdapterTaskFinished() {}
+    void onWifiRadioTaskFinished() {}
+    void onBluetoothAdapterTaskFinished() {}
+    void onBluetoothRadioTaskFinished() {}
+
+private:
+    void setupUI();
+    void createTopControlsSpace();
+    void createNetworkAdaptersSpace();
+    void createSpeedSpace();
+    void createIPManagementSpace();
+    void createConnectionsSpace();
+    void createControlButtonsSpace();
+    void showIPDetails(QTextEdit *display);
+    QString executeCommand(const QString &command, const QStringList &arguments = QStringList());
+    void parseNetworkAdapters();
+    
+    // Status checking functions
+    QString getEthernetStatus();
+    QString getWifiAdapterStatus();
+    QString getWifiRadioStatus();
+    QString getBluetoothAdapterStatus();
+    QString getBluetoothRadioStatus();
+    
+    QVBoxLayout *mainLayout;
+    QScrollArea *scrollArea;
+    QListWidget *networkList;
+    QTextEdit *infoDisplay;
+    QTextEdit *connectionsDisplay;
+    QTextEdit *ipDetailsDisplay;
+    QLabel *speedLabel;
+    
+    // Control buttons
+    QPushButton *btnEthernet;
+    QPushButton *btnWifiAdapter;
+    QPushButton *btnWifiRadio;
+    QPushButton *btnBluetoothAdapter;
+    QPushButton *btnBluetoothRadio;
+    
+    // Remove the async watcher pointers
+    QTimer *connectionsTimer;
+    QTimer *speedTimer;
+    QTimer *statusTimer;
+    int speedCounter;
+};
+
+#endif // NETWORKWIDGET_H

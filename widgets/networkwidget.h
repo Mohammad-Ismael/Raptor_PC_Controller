@@ -64,6 +64,7 @@ private:
     QString getWifiRadioStatus();
     QString getBluetoothAdapterStatus();
     QString getBluetoothRadioStatus();
+    QString getEthernetAdapterName();
     
     QVBoxLayout *mainLayout;
     QScrollArea *scrollArea;

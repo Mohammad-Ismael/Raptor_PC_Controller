@@ -600,16 +600,35 @@ void NetworkWidget::clearNetworkInfo()
 
 QString NetworkWidget::getEthernetStatus()
 {
-    QString output = executeCommand("netsh", QStringList() << "interface" << "show" << "interface");
+    QString adapterName = getEthernetAdapterName();
     
-    if (output.contains("Ethernet") && output.contains("Connected")) {
-        return "Connected";
-    } else if (output.contains("Ethernet") && output.contains("Disconnected")) {
-        return "Disconnected";
-    } else if (output.contains("Ethernet")) {
-        return "Enabled";
+    // Try PowerShell method first (more reliable)
+    QString psOutput = executeCommand("powershell", QStringList() << "-Command" << 
+        QString("$adapter = Get-NetAdapter -Name '%1' -ErrorAction SilentlyContinue; if ($adapter) { if ($adapter.Status -eq 'Up') { 'Connected' } else { 'Disabled' } } else { 'Not Found' }").arg(adapterName));
+    
+    QString status = psOutput.trimmed();
+    if (!status.isEmpty() && status != "null") {
+        return status;
     }
-    return "Disabled";
+    
+    // Fallback to netsh method
+    QString output = executeCommand("netsh", QStringList() << "interface" << "show" << "interface");
+    QStringList lines = output.split('\n');
+    for (const QString &line : lines) {
+        if (line.contains(adapterName) || line.contains("Ethernet") || line.contains("Local Area Connection")) {
+            if (line.contains("Connected")) {
+                return "Connected";
+            } else if (line.contains("Disconnected")) {
+                return "Disabled";
+            } else if (line.contains("Enabled")) {
+                return "Enabled";
+            } else if (line.contains("Disabled")) {
+                return "Disabled";
+            }
+        }
+    }
+    
+    return "Not Found";
 }
 
 QString NetworkWidget::getWifiAdapterStatus()
@@ -763,6 +782,21 @@ void NetworkWidget::checkAllAdaptersStatus()
     );
 }
 
+QString NetworkWidget::getEthernetAdapterName()
+{
+    // Find the actual Ethernet adapter name
+    QString output = executeCommand("powershell", QStringList() << "-Command" << 
+        "Get-NetAdapter -Physical | Where-Object {$_.InterfaceDescription -like '*Ethernet*' -or $_.Name -like '*Ethernet*'} | Select-Object -First 1 | Select-Object -ExpandProperty Name");
+    
+    QString name = output.trimmed();
+    if (!name.isEmpty() && name != "null") {
+        return name;
+    }
+    
+    // Fallback to common names
+    return "Ethernet";
+}
+
 void NetworkWidget::toggleEthernet()
 {
     btnEthernet->setEnabled(false);
@@ -770,23 +804,30 @@ void NetworkWidget::toggleEthernet()
     btnEthernet->setText("🔌 Working...");
     
     QTimer::singleShot(100, this, [this]() {
+        QString adapterName = getEthernetAdapterName();
         QString currentStatus = getEthernetStatus();
+        
         bool enable = (currentStatus == "Disabled" || currentStatus == "Not Found");
         
         if (enable) {
-            // Enable Ethernet adapter
-            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Ethernet" << "enable");
-            infoDisplay->append("✅ Ethernet Adapter ENABLED");
+            // ENABLE Ethernet using PowerShell (most reliable)
+            executeCommand("powershell", QStringList() << "-Command" << 
+                QString("Enable-NetAdapter -Name '%1' -Confirm:$false").arg(adapterName));
+            
+            infoDisplay->append(QString("✅ Ethernet Adapter '%1' ENABLED").arg(adapterName));
+            
         } else {
-            // Disable Ethernet adapter
-            executeCommand("netsh", QStringList() << "interface" << "set" << "interface" << "Ethernet" << "disable");
-            infoDisplay->append("✅ Ethernet Adapter DISABLED");
+            // DISABLE Ethernet using PowerShell (most reliable)
+            executeCommand("powershell", QStringList() << "-Command" << 
+                QString("Disable-NetAdapter -Name '%1' -Confirm:$false").arg(adapterName));
+            
+            infoDisplay->append(QString("✅ Ethernet Adapter '%1' DISABLED").arg(adapterName));
         }
         
         btnEthernet->setEnabled(true);
         
         // Wait and refresh status
-        QTimer::singleShot(2000, this, &NetworkWidget::checkAllAdaptersStatus);
+        QTimer::singleShot(3000, this, &NetworkWidget::checkAllAdaptersStatus);
     });
 }
 

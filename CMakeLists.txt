@@ -28,6 +28,8 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
 
         widgets/networkwidget.cpp
         widgets/networkwidget.h
+        widgets/cleanerwidget.h
+        widgets/cleanerwidget.cpp
     )
 # Define target properties for Android with Qt 6 as:
 #    set_property(TARGET Raptor APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR

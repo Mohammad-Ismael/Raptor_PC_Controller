@@ -5,6 +5,7 @@
 
 class Sidebar;
 class QStackedWidget;
+class QWidget;
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -26,9 +27,17 @@ private slots:
 private:
     void setupUI();
     void setupContentArea();
+    void showGeneralPage();
+    void showNetworkPage();
+    void showCleanerPage();
+    void showPlaceholderPage(const QString &title);
 
     Ui::MainWindow *ui;
     Sidebar *sidebar;
     QStackedWidget *stackedWidget;
+    
+    // Track which pages are loaded
+    bool networkLoaded;
+    bool cleanerLoaded;
 };
 #endif // MAINWINDOW_H

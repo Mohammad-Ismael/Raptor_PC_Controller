@@ -30,6 +30,7 @@ private:
     void showGeneralPage();
     void showNetworkPage();
     void showCleanerPage();
+    void showHardwarePage();
     void showPlaceholderPage(const QString &title);
 
     Ui::MainWindow *ui;
@@ -39,5 +40,6 @@ private:
     // Track which pages are loaded
     bool networkLoaded;
     bool cleanerLoaded;
+    bool hardwareLoaded;
 };
 #endif // MAINWINDOW_H

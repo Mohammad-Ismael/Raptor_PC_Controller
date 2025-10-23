@@ -3,6 +3,7 @@
 #include "sidebar.h"
 #include "widgets/networkwidget.h"
 #include "widgets/cleanerwidget.h" 
+#include "widgets/hardwareInfo.h" // Add this include
 #include <QHBoxLayout>
 #include <QStackedWidget>
 #include <QLabel>
@@ -14,6 +15,7 @@ MainWindow::MainWindow(QWidget *parent)
     , stackedWidget(nullptr)
     , networkLoaded(false)
     , cleanerLoaded(false)
+    , hardwareLoaded(false)
 {
     ui->setupUi(this);
     setupUI();
@@ -78,6 +80,8 @@ void MainWindow::onCategoryChanged(const QString &category)
         showNetworkPage();
     } else if (category == "Cleaner") {
         showCleanerPage();
+    } else if (category == "Hardware") {
+        showHardwarePage();
     } else {
         showPlaceholderPage(category);
     }
@@ -145,6 +149,20 @@ void MainWindow::showCleanerPage()
     stackedWidget->setCurrentIndex(3);
 }
 
+void MainWindow::showHardwarePage()
+{
+    if (!hardwareLoaded) {
+        // Load Hardware widget only when needed
+        HardwareInfo *hardwareWidget = new HardwareInfo();
+        if (stackedWidget->count() > 5) {
+            delete stackedWidget->widget(5); // Remove old widget
+            stackedWidget->insertWidget(5, hardwareWidget);
+        }
+        hardwareLoaded = true;
+    }
+    stackedWidget->setCurrentIndex(5);
+}
+
 void MainWindow::showPlaceholderPage(const QString &title)
 {
     // Show placeholder for other categories
@@ -173,7 +191,6 @@ void MainWindow::showPlaceholderPage(const QString &title)
     QMap<QString, int> categoryIndices = {
         {"WiFi", 1},
         {"Apps", 2},
-        {"Hardware", 5},
         {"Options", 6}
     };
     

@@ -47,10 +47,13 @@ private:
     void cleanThumbnails();
     void cleanDNS();
     void cleanLogs();
+    bool deleteFileWithRetry(const QString &filePath);
+    void updateCleanButtonState();
 
     QString executeCommand(const QString &command, const QStringList &arguments = QStringList());
     qint64 getFolderSize(const QString &path);
     QString formatSize(qint64 bytes);
+    void updateCheckboxText(QCheckBox* checkbox, const QString& baseText, qint64 size);
 
     QVBoxLayout *mainLayout;
     QScrollArea *scrollArea;
@@ -75,6 +78,15 @@ private:
 
     QTimer *progressTimer;
     int progressValue;
+    
+    // Store scanned sizes
+    qint64 tempFilesSize;
+    qint64 recycleBinSize;
+    qint64 browserCacheSize;
+    qint64 windowsTempSize;
+    qint64 prefetchSize;
+    qint64 thumbnailsSize;
+    qint64 logsSize;
 };
 
 #endif // CLEANERWIDGET_H

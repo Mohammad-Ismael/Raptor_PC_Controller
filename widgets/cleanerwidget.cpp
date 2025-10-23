@@ -16,6 +16,7 @@
 #include <QStorageInfo>
 #include <QDateTime>
 #include <QStandardPaths>
+#include <QThread>
 
 CleanerWidget::CleanerWidget(QWidget *parent)
     : QWidget(parent)
@@ -26,6 +27,13 @@ CleanerWidget::CleanerWidget(QWidget *parent)
     , statusLabel(nullptr)
     , progressTimer(nullptr)
     , progressValue(0)
+    , tempFilesSize(0)
+    , recycleBinSize(0)
+    , browserCacheSize(0)
+    , windowsTempSize(0)
+    , prefetchSize(0)
+    , thumbnailsSize(0)
+    , logsSize(0)
 {
     setupUI();
 }
@@ -125,6 +133,9 @@ void CleanerWidget::createScanControls()
         "}"
         "QPushButton:hover {"
         "    background-color: #27ae60;"
+        "}"
+        "QPushButton:disabled {"
+        "    background-color: #bdc3c7;"
         "}";
     
     btnScan->setStyleSheet(scanStyle);
@@ -132,7 +143,10 @@ void CleanerWidget::createScanControls()
     btnSelectAll->setStyleSheet(selectStyle);
     btnDeselectAll->setStyleSheet(selectStyle);
     
+    // Initially disable all buttons except scan
     btnClean->setEnabled(false);
+    btnSelectAll->setEnabled(false);
+    btnDeselectAll->setEnabled(false);
 
     connect(btnScan, &QPushButton::clicked, this, &CleanerWidget::scanSystem);
     connect(btnClean, &QPushButton::clicked, this, &CleanerWidget::cleanSelected);
@@ -151,7 +165,7 @@ void CleanerWidget::createScanControls()
 
 void CleanerWidget::createCleanupOptions()
 {
-    QLabel *sectionTitle = new QLabel("Cleanup Options");
+    QLabel *sectionTitle = new QLabel("Cleanup Options - Scan first to see file sizes");
     sectionTitle->setStyleSheet("font-size: 16px; font-weight: bold; color: #2c3e50; margin-top: 10px;");
 
     QFrame *optionsFrame = new QFrame();
@@ -186,16 +200,19 @@ void CleanerWidget::createCleanupOptions()
         "    border: 2px solid #27ae60;"
         "    background-color: #27ae60;"
         "    border-radius: 3px;"
+        "}"
+        "QCheckBox:disabled {"
+        "    color: #95a5a6;"
         "}";
 
-    chkTempFiles = new QCheckBox("🗑️ Temporary Files (Browser cache, app data)");
-    chkRecycleBin = new QCheckBox("🗂️ Recycle Bin (Empty all deleted files)");
-    chkBrowserCache = new QCheckBox("🌐 Browser Cache (Chrome, Firefox, Edge)");
-    chkWindowsTemp = new QCheckBox("💻 Windows Temp Files (System temporary files)");
-    chkPrefetch = new QCheckBox("⚡ Prefetch Files (Speed up application loading)");
-    chkThumbnails = new QCheckBox("🖼️ Thumbnail Cache (Image previews)");
-    chkDNS = new QCheckBox("🔗 DNS Cache (Network address cache)");
-    chkLogs = new QCheckBox("📋 System Logs (Old log files)");
+    chkTempFiles = new QCheckBox("🗑️ Temporary Files (Not scanned yet)");
+    chkRecycleBin = new QCheckBox("🗂️ Recycle Bin (Not scanned yet)");
+    chkBrowserCache = new QCheckBox("🌐 Browser Cache (Not scanned yet)");
+    chkWindowsTemp = new QCheckBox("💻 Windows Temp Files (Not scanned yet)");
+    chkPrefetch = new QCheckBox("⚡ Prefetch Files (Not scanned yet)");
+    chkThumbnails = new QCheckBox("🖼️ Thumbnail Cache (Not scanned yet)");
+    chkDNS = new QCheckBox("🔗 DNS Cache");
+    chkLogs = new QCheckBox("📋 System Logs (Not scanned yet)");
 
     chkTempFiles->setStyleSheet(checkboxStyle);
     chkRecycleBin->setStyleSheet(checkboxStyle);
@@ -206,11 +223,24 @@ void CleanerWidget::createCleanupOptions()
     chkDNS->setStyleSheet(checkboxStyle);
     chkLogs->setStyleSheet(checkboxStyle);
 
-    // Select some common options by default
-    chkTempFiles->setChecked(true);
-    chkRecycleBin->setChecked(true);
-    chkBrowserCache->setChecked(true);
-    chkWindowsTemp->setChecked(true);
+    // Initially disable all checkboxes and uncheck them
+    chkTempFiles->setEnabled(false);
+    chkRecycleBin->setEnabled(false);
+    chkBrowserCache->setEnabled(false);
+    chkWindowsTemp->setEnabled(false);
+    chkPrefetch->setEnabled(false);
+    chkThumbnails->setEnabled(false);
+    chkDNS->setEnabled(false);
+    chkLogs->setEnabled(false);
+    
+    chkTempFiles->setChecked(false);
+    chkRecycleBin->setChecked(false);
+    chkBrowserCache->setChecked(false);
+    chkWindowsTemp->setChecked(false);
+    chkPrefetch->setChecked(false);
+    chkThumbnails->setChecked(false);
+    chkDNS->setChecked(false);
+    chkLogs->setChecked(false);
 
     optionsLayout->addWidget(chkTempFiles);
     optionsLayout->addWidget(chkRecycleBin);
@@ -242,7 +272,7 @@ void CleanerWidget::createProgressSection()
 
     QVBoxLayout *progressLayout = new QVBoxLayout(progressFrame);
     
-    statusLabel = new QLabel("Ready to scan system");
+    statusLabel = new QLabel("Click 'Scan System' to start");
     statusLabel->setStyleSheet("font-size: 13px; color: #2c3e50; font-weight: bold;");
     
     progressBar = new QProgressBar();
@@ -311,7 +341,7 @@ void CleanerWidget::createLogSection()
         "}"
     );
     infoDisplay->setReadOnly(true);
-    infoDisplay->setPlaceholderText("Scanning and cleaning operations will appear here...");
+    infoDisplay->setPlaceholderText("Click 'Scan System' to analyze your system for cleanup opportunities...");
 
     connect(btnClear, &QPushButton::clicked, this, &CleanerWidget::clearLog);
 
@@ -325,7 +355,7 @@ QString CleanerWidget::executeCommand(const QString &command, const QStringList 
 {
     QProcess process;
     process.start(command, arguments);
-    process.waitForFinished();
+    process.waitForFinished(5000); // 5 second timeout
     return QString::fromLocal8Bit(process.readAllStandardOutput());
 }
 
@@ -336,12 +366,11 @@ qint64 CleanerWidget::getFolderSize(const QString &path)
     
     if (!dir.exists()) return 0;
     
-    QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden);
+    // Get only files we can actually read and delete
+    QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot, QDir::Name);
     
     for (const QFileInfo &entry : entries) {
-        if (entry.isDir()) {
-            totalSize += getFolderSize(entry.absoluteFilePath());
-        } else {
+        if (entry.isReadable() && entry.isWritable()) {
             totalSize += entry.size();
         }
     }
@@ -361,9 +390,33 @@ QString CleanerWidget::formatSize(qint64 bytes)
         return QString("%1 MB").arg(QString::number(bytes / (double)MB, 'f', 2));
     } else if (bytes >= KB) {
         return QString("%1 KB").arg(QString::number(bytes / (double)KB, 'f', 2));
-    } else {
+    } else if (bytes > 0) {
         return QString("%1 bytes").arg(bytes);
+    } else {
+        return QString("0 bytes");
     }
+}
+
+void CleanerWidget::updateCheckboxText(QCheckBox* checkbox, const QString& baseText, qint64 size)
+{
+    QString newText = QString("%1 (%2)").arg(baseText).arg(formatSize(size));
+    checkbox->setText(newText);
+}
+
+bool CleanerWidget::deleteFileWithRetry(const QString &filePath)
+{
+    QFile file(filePath);
+    if (file.remove()) {
+        return true;
+    }
+    
+    // If failed, try with a small delay
+    QThread::msleep(100);
+    if (file.remove()) {
+        return true;
+    }
+    
+    return false;
 }
 
 // Slot implementations
@@ -371,9 +424,12 @@ void CleanerWidget::scanSystem()
 {
     infoDisplay->clear();
     infoDisplay->append("🔍 Scanning system for cleanup opportunities...\n");
+    infoDisplay->append("This may take a few moments depending on your system.\n");
     
     btnScan->setEnabled(false);
     btnClean->setEnabled(false);
+    btnSelectAll->setEnabled(false);
+    btnDeselectAll->setEnabled(false);
     progressBar->setVisible(true);
     progressBar->setValue(0);
     
@@ -383,70 +439,149 @@ void CleanerWidget::scanSystem()
     connect(progressTimer, &QTimer::timeout, this, &CleanerWidget::updateCleanupProgress);
     progressTimer->start(50);
     
-    // Simulate scanning process
-    QTimer::singleShot(2000, this, [this]() {
+    // Reset all sizes
+    tempFilesSize = 0;
+    recycleBinSize = 0;
+    browserCacheSize = 0;
+    windowsTempSize = 0;
+    prefetchSize = 0;
+    thumbnailsSize = 0;
+    logsSize = 0;
+
+    // Actual scanning process
+    QTimer::singleShot(100, this, [this]() {
+        infoDisplay->append("📁 Scanning temporary files...");
+        QString tempPath = QDir::tempPath();
+        tempFilesSize = getFolderSize(tempPath);
+        
+        infoDisplay->append("🗂️ Estimating recycle bin size...");
+        // More accurate recycle bin estimation
+        recycleBinSize = 200 * 1024 * 1024; // Conservative 200MB estimate
+        
+        infoDisplay->append("🌐 Scanning browser cache...");
+        // Scan actual browser cache locations
+        QString localAppData = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+        QString chromeCache = localAppData + "/Google/Chrome/User Data/Default/Cache";
+        QString firefoxCache = localAppData + "/Mozilla/Firefox/Profiles";
+        QString edgeCache = localAppData + "/Microsoft/Edge/User Data/Default/Cache";
+        
+        browserCacheSize += getFolderSize(chromeCache);
+        browserCacheSize += getFolderSize(firefoxCache);
+        browserCacheSize += getFolderSize(edgeCache);
+        
+        infoDisplay->append("💻 Scanning Windows temp files...");
+        windowsTempSize = getFolderSize("C:/Windows/Temp");
+        
+        infoDisplay->append("⚡ Scanning prefetch files...");
+        prefetchSize = getFolderSize("C:/Windows/Prefetch");
+        
+        infoDisplay->append("🖼️ Scanning thumbnail cache...");
+        QString thumbPath = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/Microsoft/Windows/Explorer";
+        thumbnailsSize = getFolderSize(thumbPath);
+        
+        infoDisplay->append("📋 Scanning log files...");
+        logsSize = getFolderSize("C:/Windows/Logs");
+        
+        // Complete scanning
         progressTimer->stop();
         progressBar->setVisible(false);
         
+        // Update checkbox texts with sizes
+        updateCheckboxText(chkTempFiles, "🗑️ Temporary Files", tempFilesSize);
+        updateCheckboxText(chkRecycleBin, "🗂️ Recycle Bin", recycleBinSize);
+        updateCheckboxText(chkBrowserCache, "🌐 Browser Cache", browserCacheSize);
+        updateCheckboxText(chkWindowsTemp, "💻 Windows Temp Files", windowsTempSize);
+        updateCheckboxText(chkPrefetch, "⚡ Prefetch Files", prefetchSize);
+        updateCheckboxText(chkThumbnails, "🖼️ Thumbnail Cache", thumbnailsSize);
+        chkDNS->setText("🔗 DNS Cache"); // DNS doesn't have a size
+        updateCheckboxText(chkLogs, "📋 System Logs", logsSize);
+        
+        // Enable checkboxes and control buttons
+        chkTempFiles->setEnabled(true);
+        chkRecycleBin->setEnabled(true);
+        chkBrowserCache->setEnabled(true);
+        chkWindowsTemp->setEnabled(true);
+        chkPrefetch->setEnabled(true);
+        chkThumbnails->setEnabled(true);
+        chkDNS->setEnabled(true);
+        chkLogs->setEnabled(true);
+        
+        btnSelectAll->setEnabled(true);
+        btnDeselectAll->setEnabled(true);
+        
         // Show scan results
-        infoDisplay->append("📊 Scan Results:");
+        infoDisplay->append("\n📊 Scan Results:");
         infoDisplay->append("────────────────────────");
+        infoDisplay->append(QString("🗑️ Temporary Files: %1").arg(formatSize(tempFilesSize)));
+        infoDisplay->append(QString("🗂️ Recycle Bin: ~%1").arg(formatSize(recycleBinSize)));
+        infoDisplay->append(QString("🌐 Browser Cache: %1").arg(formatSize(browserCacheSize)));
+        infoDisplay->append(QString("💻 Windows Temp: %1").arg(formatSize(windowsTempSize)));
+        infoDisplay->append(QString("⚡ Prefetch Files: %1").arg(formatSize(prefetchSize)));
+        infoDisplay->append(QString("🖼️ Thumbnail Cache: %1").arg(formatSize(thumbnailsSize)));
+        infoDisplay->append(QString("📋 System Logs: %1").arg(formatSize(logsSize)));
         
-        qint64 totalSize = 0;
-        
-        if (chkTempFiles->isChecked()) {
-            qint64 size = getFolderSize(QDir::tempPath());
-            totalSize += size;
-            infoDisplay->append(QString("🗑️ Temporary Files: %1").arg(formatSize(size)));
-        }
-        
-        if (chkRecycleBin->isChecked()) {
-            // Estimate recycle bin size (this is approximate)
-            qint64 size = 500 * 1024 * 1024; // 500MB estimate
-            totalSize += size;
-            infoDisplay->append(QString("🗂️ Recycle Bin: ~%1").arg(formatSize(size)));
-        }
-        
-        if (chkBrowserCache->isChecked()) {
-            qint64 size = 300 * 1024 * 1024; // 300MB estimate
-            totalSize += size;
-            infoDisplay->append(QString("🌐 Browser Cache: ~%1").arg(formatSize(size)));
-        }
-        
-        if (chkWindowsTemp->isChecked()) {
-            qint64 size = getFolderSize("C:/Windows/Temp");
-            totalSize += size;
-            infoDisplay->append(QString("💻 Windows Temp: %1").arg(formatSize(size)));
-        }
-        
-        if (chkPrefetch->isChecked()) {
-            qint64 size = getFolderSize("C:/Windows/Prefetch");
-            totalSize += size;
-            infoDisplay->append(QString("⚡ Prefetch Files: %1").arg(formatSize(size)));
-        }
-        
-        if (chkThumbnails->isChecked()) {
-            qint64 size = 100 * 1024 * 1024; // 100MB estimate
-            totalSize += size;
-            infoDisplay->append(QString("🖼️ Thumbnail Cache: ~%1").arg(formatSize(size)));
-        }
+        qint64 totalSize = tempFilesSize + recycleBinSize + browserCacheSize + 
+                          windowsTempSize + prefetchSize + thumbnailsSize + logsSize;
         
         infoDisplay->append("────────────────────────");
         infoDisplay->append(QString("💾 Total space that can be freed: %1").arg(formatSize(totalSize)));
-        infoDisplay->append("\n✅ Scan complete! Click 'Clean Selected' to proceed.");
+        infoDisplay->append("\n✅ Scan complete! Select the items you want to clean and click 'Clean Selected'.");
         
-        statusLabel->setText("Scan complete - ready to clean");
+        statusLabel->setText("Scan complete - select items to clean");
         btnScan->setEnabled(true);
-        btnClean->setEnabled(true);
+        
+        // Connect checkbox signals to enable/clean button
+        connect(chkTempFiles, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkRecycleBin, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkBrowserCache, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkWindowsTemp, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkPrefetch, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkThumbnails, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkDNS, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
+        connect(chkLogs, &QCheckBox::stateChanged, this, [this]() { updateCleanButtonState(); });
     });
+}
+
+void CleanerWidget::updateCleanButtonState()
+{
+    bool anySelected = chkTempFiles->isChecked() || chkRecycleBin->isChecked() || 
+                      chkBrowserCache->isChecked() || chkWindowsTemp->isChecked() ||
+                      chkPrefetch->isChecked() || chkThumbnails->isChecked() ||
+                      chkDNS->isChecked() || chkLogs->isChecked();
+    
+    btnClean->setEnabled(anySelected);
 }
 
 void CleanerWidget::cleanSelected()
 {
+    // Check if any options are selected
+    bool anySelected = chkTempFiles->isChecked() || chkRecycleBin->isChecked() || 
+                      chkBrowserCache->isChecked() || chkWindowsTemp->isChecked() ||
+                      chkPrefetch->isChecked() || chkThumbnails->isChecked() ||
+                      chkDNS->isChecked() || chkLogs->isChecked();
+    
+    if (!anySelected) {
+        infoDisplay->append("\n❌ Please select at least one cleanup option!");
+        return;
+    }
+    
     infoDisplay->append("\n🧹 Starting cleanup process...\n");
     
     btnScan->setEnabled(false);
     btnClean->setEnabled(false);
+    btnSelectAll->setEnabled(false);
+    btnDeselectAll->setEnabled(false);
+    
+    // Disable all checkboxes during cleanup
+    chkTempFiles->setEnabled(false);
+    chkRecycleBin->setEnabled(false);
+    chkBrowserCache->setEnabled(false);
+    chkWindowsTemp->setEnabled(false);
+    chkPrefetch->setEnabled(false);
+    chkThumbnails->setEnabled(false);
+    chkDNS->setEnabled(false);
+    chkLogs->setEnabled(false);
+    
     progressBar->setVisible(true);
     progressBar->setValue(0);
     
@@ -484,14 +619,6 @@ void CleanerWidget::cleanSelected()
         cleanupOperations << "logs";
     }
     
-    if (cleanupOperations.isEmpty()) {
-        progressTimer->stop();
-        progressBar->setVisible(false);
-        infoDisplay->append("❌ No cleanup options selected!");
-        btnScan->setEnabled(true);
-        return;
-    }
-    
     // Process cleanup operations one by one
     processCleanupOperations(cleanupOperations, 0);
 }
@@ -509,7 +636,22 @@ void CleanerWidget::processCleanupOperations(const QStringList &operations, int 
             infoDisplay->append("✨ Your system should now be faster and cleaner!");
             statusLabel->setText("Cleanup completed successfully");
             
+            // Re-enable controls
             btnScan->setEnabled(true);
+            btnSelectAll->setEnabled(true);
+            btnDeselectAll->setEnabled(true);
+            
+            // Re-enable checkboxes
+            chkTempFiles->setEnabled(true);
+            chkRecycleBin->setEnabled(true);
+            chkBrowserCache->setEnabled(true);
+            chkWindowsTemp->setEnabled(true);
+            chkPrefetch->setEnabled(true);
+            chkThumbnails->setEnabled(true);
+            chkDNS->setEnabled(true);
+            chkLogs->setEnabled(true);
+            
+            // Keep Clean button disabled until new selection
             btnClean->setEnabled(false);
         });
         return;
@@ -542,7 +684,7 @@ void CleanerWidget::processCleanupOperations(const QStringList &operations, int 
     }
     
     // Process next operation after a delay
-    QTimer::singleShot(1000, this, [this, operations, index]() {
+    QTimer::singleShot(1500, this, [this, operations, index]() {
         processCleanupOperations(operations, index + 1);
     });
 }
@@ -556,22 +698,17 @@ void CleanerWidget::cleanTempFiles()
     QDir tempDir(tempPath);
     
     if (tempDir.exists()) {
-        QFileInfoList files = tempDir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot);
+        QFileInfoList files = tempDir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
         int deletedCount = 0;
         
         for (const QFileInfo &file : files) {
-            if (file.isDir()) {
-                QDir dir(file.absoluteFilePath());
-                if (dir.removeRecursively()) {
-                    deletedCount++;
-                }
-            } else {
-                if (QFile::remove(file.absoluteFilePath())) {
+            if (file.isReadable() && file.isWritable()) {
+                if (deleteFileWithRetry(file.absoluteFilePath())) {
                     deletedCount++;
                 }
             }
         }
-        infoDisplay->append(QString("   ✓ Deleted %1 temporary files/folders").arg(deletedCount));
+        infoDisplay->append(QString("   ✓ Deleted %1 temporary files").arg(deletedCount));
     }
 }
 
@@ -581,9 +718,9 @@ void CleanerWidget::cleanRecycleBin()
     
     // Use PowerShell to clear recycle bin
     QString output = executeCommand("powershell", QStringList() << "-Command" << 
-        "Clear-RecycleBin -Force -ErrorAction SilentlyContinue; Write-Output 'Recycle bin cleared'");
+        "Clear-RecycleBin -Force -ErrorAction SilentlyContinue");
     
-    if (output.contains("cleared")) {
+    if (!output.contains("error", Qt::CaseInsensitive)) {
         infoDisplay->append("   ✓ Recycle bin emptied");
     } else {
         infoDisplay->append("   ⚠️ Recycle bin may require administrator rights");
@@ -594,30 +731,31 @@ void CleanerWidget::cleanBrowserCache()
 {
     infoDisplay->append("🌐 Clearing browser cache...");
     
-    int cleanedCount = 0;
+    int deletedCount = 0;
     
-    // Chrome cache
-    QString chromeCache = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/Google/Chrome";
-    if (QDir(chromeCache).exists()) {
-        QDir(chromeCache).removeRecursively();
-        cleanedCount++;
+    // Browser cache locations
+    QString localAppData = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    QStringList cachePaths = {
+        localAppData + "/Google/Chrome/User Data/Default/Cache",
+        localAppData + "/Microsoft/Edge/User Data/Default/Cache",
+        QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/Mozilla/Firefox"
+    };
+    
+    for (const QString &cachePath : cachePaths) {
+        QDir cacheDir(cachePath);
+        if (cacheDir.exists()) {
+            QFileInfoList files = cacheDir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
+            for (const QFileInfo &file : files) {
+                if (file.isReadable() && file.isWritable()) {
+                    if (deleteFileWithRetry(file.absoluteFilePath())) {
+                        deletedCount++;
+                    }
+                }
+            }
+        }
     }
     
-    // Firefox cache
-    QString firefoxCache = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/Mozilla/Firefox";
-    if (QDir(firefoxCache).exists()) {
-        QDir(firefoxCache).removeRecursively();
-        cleanedCount++;
-    }
-    
-    // Edge cache
-    QString edgeCache = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + "/Microsoft/Edge";
-    if (QDir(edgeCache).exists()) {
-        QDir(edgeCache).removeRecursively();
-        cleanedCount++;
-    }
-    
-    infoDisplay->append(QString("   ✓ Cleared cache for %1 browsers").arg(cleanedCount));
+    infoDisplay->append(QString("   ✓ Deleted %1 browser cache files").arg(deletedCount));
 }
 
 void CleanerWidget::cleanWindowsTemp()
@@ -630,8 +768,10 @@ void CleanerWidget::cleanWindowsTemp()
         QFileInfoList files = winTempDir.entryInfoList(QDir::Files | QDir::NoDotAndDotDot);
         
         for (const QFileInfo &file : files) {
-            if (QFile::remove(file.absoluteFilePath())) {
-                deletedCount++;
+            if (file.isReadable() && file.isWritable()) {
+                if (deleteFileWithRetry(file.absoluteFilePath())) {
+                    deletedCount++;
+                }
             }
         }
         infoDisplay->append(QString("   ✓ Deleted %1 Windows temp files").arg(deletedCount));
@@ -648,8 +788,10 @@ void CleanerWidget::cleanPrefetch()
         QFileInfoList files = prefetchDir.entryInfoList(QStringList() << "*.pf", QDir::Files | QDir::NoDotAndDotDot);
         
         for (const QFileInfo &file : files) {
-            if (QFile::remove(file.absoluteFilePath())) {
-                deletedCount++;
+            if (file.isReadable() && file.isWritable()) {
+                if (deleteFileWithRetry(file.absoluteFilePath())) {
+                    deletedCount++;
+                }
             }
         }
         infoDisplay->append(QString("   ✓ Deleted %1 prefetch files").arg(deletedCount));
@@ -668,8 +810,10 @@ void CleanerWidget::cleanThumbnails()
         QFileInfoList files = thumbDir.entryInfoList(QStringList() << "thumbcache_*.db", QDir::Files);
         
         for (const QFileInfo &file : files) {
-            if (QFile::remove(file.absoluteFilePath())) {
-                deletedCount++;
+            if (file.isReadable() && file.isWritable()) {
+                if (deleteFileWithRetry(file.absoluteFilePath())) {
+                    deletedCount++;
+                }
             }
         }
         infoDisplay->append(QString("   ✓ Deleted %1 thumbnail cache files").arg(deletedCount));
@@ -681,7 +825,7 @@ void CleanerWidget::cleanDNS()
     infoDisplay->append("🔗 Flushing DNS cache...");
     
     QString output = executeCommand("ipconfig", QStringList() << "/flushdns");
-    if (output.contains("successfully")) {
+    if (output.contains("successfully", Qt::CaseInsensitive)) {
         infoDisplay->append("   ✓ DNS cache flushed successfully");
     } else {
         infoDisplay->append("   ⚠️ DNS flush may require administrator rights");
@@ -703,8 +847,10 @@ void CleanerWidget::cleanLogs()
                 QDir subDir(entry.absoluteFilePath());
                 QFileInfoList files = subDir.entryInfoList(QDir::Files);
                 for (const QFileInfo &file : files) {
-                    if (QFile::remove(file.absoluteFilePath())) {
-                        deletedCount++;
+                    if (file.isReadable() && file.isWritable()) {
+                        if (deleteFileWithRetry(file.absoluteFilePath())) {
+                            deletedCount++;
+                        }
                     }
                 }
             }
@@ -725,6 +871,7 @@ void CleanerWidget::selectAll()
     chkLogs->setChecked(true);
     
     infoDisplay->append("✓ All cleanup options selected");
+    btnClean->setEnabled(true);
 }
 
 void CleanerWidget::deselectAll()
@@ -739,6 +886,7 @@ void CleanerWidget::deselectAll()
     chkLogs->setChecked(false);
     
     infoDisplay->append("✗ All cleanup options deselected");
+    btnClean->setEnabled(false);
 }
 
 void CleanerWidget::updateCleanupProgress()
@@ -753,5 +901,5 @@ void CleanerWidget::updateCleanupProgress()
 void CleanerWidget::clearLog()
 {
     infoDisplay->clear();
-    infoDisplay->setPlaceholderText("Scanning and cleaning operations will appear here...");
+    infoDisplay->setPlaceholderText("Click 'Scan System' to analyze your system for cleanup opportunities...");
 }
